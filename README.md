@@ -84,7 +84,7 @@ API トークンを公開ファイルに置けないため、GAS（`gas/chatwork
 ## ファイルを更新したのに画面が変わらないとき
 
 バージョン番号は3か所で管理しています（更新用 ZIP では毎回そろえて上げてあります）。
-- `index.html` / `admin.html` の `?v=39`
+- `index.html` / `admin.html` の `?v=41`
 - `js/common.js` の `APP_VERSION`
 - `version.json`
 
@@ -104,7 +104,7 @@ API トークンを公開ファイルに置けないため、GAS（`gas/chatwork
 | `employees/{uid}` | 社員（name, email, active） |
 | `items/{id}` | 教育項目（title, description, type＝check/text/video, videoUrl, phase＝段階（チェックのみ）, group＝カテゴリ（チェック・ビデオ）, order, published, autoBy＝練習合格で自動履修） |
 | `progress/{uid}` | 社員が「履修済み」にした項目（done）、項目メモ（memos）、練習の記録（practice.typing / practice.shortcuts） |
-| `approvals/{uid}` | 責任者の承認（items）、段階の許可（unlocked: {段階名: true}）、ビデオカテゴリの許可（unlockedVideo: {カテゴリ名: true}） |
+| `approvals/{uid}` | 責任者の承認（items）、段階の許可（unlocked: {段階名: true}）、ビデオカテゴリの許可（unlockedVideo）、社員ごとの対象外項目（hidden: {itemId: true}） |
 | `reports/{id}` | 日報（uid, name, date, checks, did＝今日やったこと, notice＝気づき, next＝次回の課題, text＝結合文, confirmations） |
 | `notes/{uid}` | 責任者のひとことメモ（entries）と、日別の指導記録（daily: {YYYY-MM-DD: {taught, concern, next, author, at, comments: [{text, author, at}]}}） |
 | `settings/app` | アプリ設定（phaseLock: 段階の許可制） |

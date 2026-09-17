@@ -2,7 +2,7 @@
 
 let me = null;
 let employees = [], items = [], admins = [], reports = [];
-const progressMap = {}, approvalsMap = {}, unlockedMap = {}, unlockedVideoMap = {}, memosMap = {}, practiceMap = {};
+const progressMap = {}, approvalsMap = {}, unlockedMap = {}, unlockedVideoMap = {}, hiddenMap = {}, memosMap = {}, practiceMap = {};
 let practiceSettings = { useDefault: true, custom: [] };
 let appSettings = { phaseLock: false };
 let reportFilter = 'all', reportEmp = '';
@@ -255,6 +255,7 @@ async function loadProgress() {
     approvalsMap[e.id] = a.exists ? (a.data().items || {}) : {};
     unlockedMap[e.id] = a.exists ? (a.data().unlocked || {}) : {};
     unlockedVideoMap[e.id] = a.exists ? (a.data().unlockedVideo || {}) : {};
+    hiddenMap[e.id] = a.exists ? (a.data().hidden || {}) : {};
   });
 }
 
@@ -421,6 +422,18 @@ function practiceRecordHtml(uid) {
 /* ---- 段階の許可 ---- */
 function phaseListFor() { return groupByPhase(pubItems().filter(i => typeOf(i) === 'check')); }
 function videoGroupsFor() { return groupItems(pubItems().filter(i => typeOf(i) === 'video')); }
+/* 社員ごとに項目を「出す／出さない」で切り替える */
+async function setItemHidden(uid, itemId, hide) {
+  if (hide) {
+    await db.doc('approvals/' + uid).set({ hidden: { [itemId]: true } }, { merge: true });
+  } else {
+    await db.doc('approvals/' + uid).update(new firebase.firestore.FieldPath('hidden', itemId), FV.delete())
+      .catch(err => { if (err && err.code === 'not-found') return; throw err; });
+  }
+  hiddenMap[uid] = { ...(hiddenMap[uid] || {}) };
+  if (hide) hiddenMap[uid][itemId] = true; else delete hiddenMap[uid][itemId];
+}
+
 async function setVideoUnlocked(uid, name, on) {
   if (on) {
     await db.doc('approvals/' + uid).set({ unlockedVideo: { [name]: true } }, { merge: true });
@@ -433,7 +446,8 @@ async function setVideoUnlocked(uid, name, on) {
 }
 function canUnlockNext(uid) {
   if (!appSettings.phaseLock) return null;
-  const phases = phaseListFor();
+  const hid = hiddenMap[uid] || {};
+  const phases = phaseListFor().map(p => ({ ...p, items: p.items.filter(i => !hid[i.id]) })).filter(p => p.items.length);
   const locked = phases.filter(p => !unlockedMap[uid] || !unlockedMap[uid][p.name]);
   if (!locked.length) return null;
   const open = phases.filter(p => unlockedMap[uid] && unlockedMap[uid][p.name]);
@@ -477,7 +491,8 @@ function memoView(uid, itemId) {
 }
 
 function pendingFor(uid) {
-  return pubItems().filter(i => statusOf(i.id, progressMap[uid], approvalsMap[uid]) === 'pending');
+  const hid = hiddenMap[uid] || {};
+  return pubItems().filter(i => !hid[i.id] && statusOf(i.id, progressMap[uid], approvalsMap[uid]) === 'pending');
 }
 
 function renderPending() {
@@ -562,7 +577,7 @@ function renderEmployees() {
     return;
   }
   wrap.innerHTML = employees.map(e => {
-    const s = progressSummary(pub, progressMap[e.id], approvalsMap[e.id]);
+    const s = progressSummary(pub.filter(i => !(hiddenMap[e.id] || {})[i.id]), progressMap[e.id], approvalsMap[e.id]);
     const pct = s.total ? Math.round(s.approved / s.total * 100) : 0;
     const last = reports.find(r => r.uid === e.id);
     return `<div class="card emp-card ${e.active === false ? 'inactive' : ''}" data-emp="${e.id}">
@@ -669,14 +684,21 @@ function renderEmpDetail() {
   if (!e) return;
   const done = progressMap[e.id] || {}, appr = approvalsMap[e.id] || {};
   const pub = pubItems();
-  const s = progressSummary(pub, done, appr);
+  const s = progressSummary(pub.filter(i => !(hiddenMap[e.id] || {})[i.id]), done, appr);
   const notes = [...empNotes].sort((a, b) => (b.at || 0) - (a.at || 0));
 
   const checks = pub.filter(i => typeOf(i) === 'check'), texts = pub.filter(i => typeOf(i) === 'text'), videos = pub.filter(i => typeOf(i) === 'video');
   const phases = groupByPhase(checks);
   const vgroups = groupItems(videos);
   const lock = appSettings.phaseLock;
+  const hid = hiddenMap[e.id] || {};
   const itemRow = i => {
+    if (hid[i.id]) {
+      return `<div class="row item-off">
+        <div class="row-main"><span class="badge badge-none">対象外</span> ${esc(i.title)}</div>
+        <button class="btn btn-ghost btn-sm" data-show-item="${i.id}">戻す</button>
+      </div>`;
+    }
     const st = statusOf(i.id, done, appr);
     let action = '';
     if (st === 'pending') action = `<button class="btn btn-primary btn-sm" data-approve="${i.id}">✅ 承認</button>`;
@@ -687,9 +709,10 @@ function renderEmpDetail() {
     return `<div class="row">
       <div class="row-main"><span class="badge badge-${st}">${STATUS_LABELS[st]}</span> ${esc(i.title)}${sub ? `<div class="muted small">${sub}</div>` : ''}${memoView(e.id, i.id)}</div>
       ${action}
+      <button class="btn btn-ghost btn-sm" data-hide-item="${i.id}" title="この社員には出さない">✕</button>
     </div>`;
   };
-  const sumLabel = list => { const ps = progressSummary(list, done, appr); return `<span class="muted small">${ps.approved} / ${ps.total}</span>`; };
+  const sumLabel = list => { const ps = progressSummary(list.filter(i => !(hiddenMap[e.id] || {})[i.id]), done, appr); return `<span class="muted small">${ps.approved} / ${ps.total}</span>`; };
   let itemsHtml = '';
   if (checks.length) itemsHtml += `<h3 class="phase-title">【チェック】 ${sumLabel(checks)}</h3>` + phases.map(p => {
     const lockMark = lock && !(unlockedMap[e.id] || {})[p.name] ? '🔒 ' : '';
@@ -762,7 +785,8 @@ function renderEmpDetail() {
     </div>` : ''}
 
     <div class="card">
-      <h3>教育項目 <span class="muted small">承認 ${s.approved}/${s.total}・確認待ち ${s.pending}</span></h3>
+      <h3>教育項目 <span class="muted small">承認 ${s.approved}/${s.total}・確認待ち ${s.pending}${Object.keys(hid).length ? `・対象外 ${Object.keys(hid).length}` : ''}</span></h3>
+      <p class="muted small">右の ✕ を押すと、その項目はこの社員には表示されなくなります（人によって見せないビデオなどに使います）</p>
       ${stampGrid(pub, done, appr)}
       ${itemsHtml || '<p class="muted small">公開中の項目がありません</p>'}
     </div>
@@ -990,6 +1014,22 @@ async function onEmpDetailClick(ev) {
   if (unBtn) { await doUnapprove(e.id, unBtn.dataset.unapprove, unBtn); return; }
   const confBtn = t.closest('[data-confirm]');
   if (confBtn) { await toggleConfirm(confBtn.dataset.confirm, confBtn); return; }
+  const hideBtn = t.closest('[data-hide-item]');
+  if (hideBtn) {
+    const it = items.find(x => x.id === hideBtn.dataset.hideItem);
+    if (!confirm(`「${it ? it.title : ''}」を ${e.name} さんの対象外にしますか？（本人の画面から見えなくなります）`)) return;
+    setBusy(hideBtn, true, '…');
+    try { await setItemHidden(e.id, hideBtn.dataset.hideItem, true); renderEmpDetail(); renderEmployees(); renderPending(); toast('対象外にしました', 'ok'); }
+    catch (err) { toast(authErrorMessage(err), 'err'); setBusy(hideBtn, false); }
+    return;
+  }
+  const showBtn = t.closest('[data-show-item]');
+  if (showBtn) {
+    setBusy(showBtn, true, '…');
+    try { await setItemHidden(e.id, showBtn.dataset.showItem, false); renderEmpDetail(); renderEmployees(); renderPending(); toast('対象に戻しました', 'ok'); }
+    catch (err) { toast(authErrorMessage(err), 'err'); setBusy(showBtn, false); }
+    return;
+  }
   const unlockV = t.closest('[data-unlock-video]');
   if (unlockV) {
     const on = unlockV.dataset.on === '1';

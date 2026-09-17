@@ -1,13 +1,13 @@
 /* ===== 社員側 ===== */
 
 let me = null;
-let items = [], done = {}, memos = {}, approvals = {}, unlocked = {}, unlockedVideo = {}, myReports = [];
+let items = [], done = {}, memos = {}, approvals = {}, unlocked = {}, unlockedVideo = {}, hiddenItems = {}, myReports = [];
 let practice = {};
 let myCal = newCalState();
 let practicePass = { typingCpm: 0, typingAcc: 0, shortcutScore: 0 };
 let practiceTiers = {};
 let appSettings = { phaseLock: false };
-const visibleItems = () => unlockedItems(items, unlocked, unlockedVideo, appSettings.phaseLock);
+const visibleItems = () => unlockedItems(items, unlocked, unlockedVideo, appSettings.phaseLock, hiddenItems);
 let trainingFilter = 'all';
 let typeFilter = 'check';
 let selectedPhase = null;
@@ -172,6 +172,8 @@ async function loadAll() {
   approvals = appr.exists ? (appr.data().items || {}) : {};
   unlocked = appr.exists ? (appr.data().unlocked || {}) : {};
   unlockedVideo = appr.exists ? (appr.data().unlockedVideo || {}) : {};
+  hiddenItems = appr.exists ? (appr.data().hidden || {}) : {};
+  items = items.filter(i => !hiddenItems[i.id]);   // 自分に割り当てられていない項目は最初から除く
   appSettings = app;
   setReports(reps);
   markLoaded();

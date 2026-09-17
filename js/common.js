@@ -186,6 +186,8 @@ async function fetchAppSettings() {
 function isPhaseUnlocked(name, unlocked, phaseLock) {
   return !phaseLock || !!(unlocked && unlocked[name]);
 }
+/* 社員ごとに個別に外した項目（ビデオなど）は常に非表示 */
+function isItemHidden(it, hidden) { return !!(hidden && hidden[it.id]); }
 function isItemUnlocked(it, unlocked, unlockedVideo, phaseLock) {
   if (!phaseLock) return true;
   const t = typeOf(it);
@@ -194,9 +196,8 @@ function isItemUnlocked(it, unlocked, unlockedVideo, phaseLock) {
   return true; // 説明あり は常に見える
 }
 /* 開放済みの項目だけに絞る */
-function unlockedItems(items, unlocked, unlockedVideo, phaseLock) {
-  if (!phaseLock) return items;
-  return items.filter(i => isItemUnlocked(i, unlocked, unlockedVideo, phaseLock));
+function unlockedItems(items, unlocked, unlockedVideo, phaseLock, hidden) {
+  return items.filter(i => !isItemHidden(i, hidden) && isItemUnlocked(i, unlocked, unlockedVideo, phaseLock));
 }
 
 /* タイピングの言葉リスト（settings/practice）。初期リストと責任者の追加分を合わせて返す */
@@ -289,7 +290,7 @@ function renderTypeSeg(el, list, active) {
 }
 
 /* アプリのバージョン（version.json と index.html / admin.html の ?v= と同じ番号にする） */
-const APP_VERSION = '40';
+const APP_VERSION = '41';
 
 /* 新しいバージョンが公開されていれば読み込み直す。true を返したら reload 済み */
 async function checkForNewVersion(showToast) {
