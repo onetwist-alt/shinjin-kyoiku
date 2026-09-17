@@ -144,6 +144,8 @@ document.addEventListener('DOMContentLoaded', () => {
     paintTierRow(row);
   });
   $('#pass-save').addEventListener('click', savePassLine);
+  $('#nt-save').addEventListener('click', e => saveNotifySettings(e.target));
+  $('#nt-test').addEventListener('click', e => testNotify(e.target));
   $('#phase-lock').addEventListener('change', async e => {
     const on = e.target.checked;
     if (on && !confirm('段階の許可制をオンにします。\n許可していない段階は社員に表示されなくなります。\nいま進行中の段階と最初の段階は、全員分を自動で許可します。よろしいですか？')) { e.target.checked = false; return; }
@@ -227,6 +229,7 @@ async function loadAll() {
     db.collection('reports').orderBy('createdAt', 'desc').limit(150).get(),
     fetchAppSettings(),
     fetchPracticeWords(),
+    fetchNotifySettings(),
   ]);
   appSettings = app;
   practiceSettings = pw;
@@ -269,6 +272,7 @@ function renderAll() {
   renderPhaseLockSetting();
   renderPracticeSettings();
   renderOperatorsSetting();
+  renderNotifySettings();
   $('#my-name-disp').textContent = me.name;
   const ob = $('#btn-operator'); if (ob) ob.textContent = `👤 ${me.name}`;
 }
@@ -302,6 +306,48 @@ async function saveTiers() {
     toast('重要度を保存しました', 'ok');
   } catch (err) { toast(authErrorMessage(err), 'err'); }
   finally { setBusy(btn, false); }
+}
+
+/* ---- チャットワーク通知の設定 ---- */
+function renderNotifySettings() {
+  const c = notifyConf || {};
+  const ev = c.events || {};
+  $('#nt-enabled').checked = !!c.enabled;
+  $('#nt-url').value = c.gasUrl || '';
+  $('#nt-room').value = c.roomId || '';
+  $('#nt-report').checked = ev.report !== false;
+  $('#nt-daily').checked = ev.daily !== false;
+  $('#nt-comment').checked = ev.comment !== false;
+}
+async function saveNotifySettings(btn) {
+  const conf = {
+    enabled: $('#nt-enabled').checked,
+    gasUrl: $('#nt-url').value.trim(),
+    roomId: $('#nt-room').value.trim(),
+    events: { report: $('#nt-report').checked, daily: $('#nt-daily').checked, comment: $('#nt-comment').checked },
+    updatedAt: FV.serverTimestamp(),
+  };
+  if (conf.enabled && !/^https:\/\/script\.google\.com\//.test(conf.gasUrl)) {
+    toast('GAS のウェブアプリ URL（https://script.google.com/… ）を入れてください', 'err');
+    return;
+  }
+  setBusy(btn, true, '保存中…');
+  try {
+    await db.doc('settings/notify').set(conf, { merge: true });
+    notifyConf = { ...conf };
+    toast('通知の設定を保存しました', 'ok');
+  } catch (err) { toast(authErrorMessage(err), 'err'); }
+  finally { setBusy(btn, false); }
+}
+async function testNotify(btn) {
+  if (!notifyConf || !notifyConf.gasUrl) { toast('先に設定を保存してください', 'err'); return; }
+  setBusy(btn, true, '送信中…');
+  const saved = notifyConf.enabled;
+  notifyConf.enabled = true;
+  const ok = await notifyChatwork('report', `[info][title]テスト送信[/title]新人教育アプリからのテストです（${me.name}）[/info]`);
+  notifyConf.enabled = saved;
+  $('#nt-result').textContent = ok ? '送信しました。チャットワークのルームを確認してください' : '送信できませんでした。URL とデプロイ設定（アクセスできるユーザー＝全員）を確認してください';
+  setBusy(btn, false);
 }
 
 function renderPracticeSettings() {
@@ -891,6 +937,7 @@ async function addDailyComment(btn) {
     empDaily[dt] = { ...x, comments };
     renderDailyCard();
     toast('コメントを追加しました', 'ok');
+    notifyChatwork('comment', `[info][title]上長コメント（${esc(currentEmp.name)} さん・${fmtYmd(dt)}）[/title]${entry.author}：\n${entry.text}\n\n（元の報告事項）${(x.next || '').slice(0, 120)}[/info]`);
   } catch (err) { toast(authErrorMessage(err), 'err'); setBusy(btn, false); }
 }
 async function deleteDailyComment(idx) {
@@ -919,6 +966,8 @@ async function saveDaily(btn) {
     empDaily[dt] = entry;
     renderDailyCard();
     toast(`${fmtYmd(dt)} の記録を保存しました`, 'ok');
+    const body = [entry.taught && '【指導したこと】' + entry.taught, entry.concern && '【懸念点】' + entry.concern, entry.next && '【報告事項・以後の進め方】' + entry.next].filter(Boolean).join('\n');
+    notifyChatwork('daily', `[info][title]責任者の記録（${esc(currentEmp.name)} さん・${fmtYmd(dt)}）[/title]記入者：${entry.author}\n${body}[/info]`);
   } catch (err) { toast(authErrorMessage(err), 'err'); setBusy(btn, false); }
 }
 async function deleteDaily(dt) {

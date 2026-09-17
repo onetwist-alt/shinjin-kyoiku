@@ -157,6 +157,7 @@ async function loadAll() {
     db.collection('reports').where('uid', '==', me.uid).get(),
     fetchAppSettings(),
     fetchPracticeWords(),
+    fetchNotifySettings(),
   ]);
   items = it;
   done = prog.exists ? (prog.data().done || {}) : {};
@@ -423,6 +424,8 @@ async function submitReport(e) {
       });
     }
     toast('日報を提出しました', 'ok');
+    const head = (did || notice || next || '').split('\n').slice(0, 3).join('\n');
+    notifyChatwork('report', `[info][title]日報が提出されました[/title]${me.name} さん（${fmtYmd(date)}）\n${head}\n\n${location.href.replace(/[^/]*$/, '')}admin.html[/info]`);
     ['report-did', 'report-notice', 'report-next'].forEach(id => { $('#' + id).value = ''; });
     $('#report-date').value = todayStr();
     setReports(await db.collection('reports').where('uid', '==', me.uid).get());

@@ -200,6 +200,30 @@ function unlockedItems(items, unlocked, unlockedVideo, phaseLock) {
 }
 
 /* タイピングの言葉リスト（settings/practice）。初期リストと責任者の追加分を合わせて返す */
+/* ===== チャットワーク通知（GAS 経由） ===== */
+let notifyConf = null;
+async function fetchNotifySettings() {
+  try {
+    const snap = await db.doc('settings/notify').get();
+    notifyConf = snap.exists ? snap.data() : {};
+  } catch (e) { notifyConf = {}; }
+  return notifyConf;
+}
+/* event: 'report' | 'daily' | 'comment' */
+async function notifyChatwork(event, text) {
+  const c = notifyConf || {};
+  if (!c.enabled || !c.gasUrl) return false;
+  if (c.events && c.events[event] === false) return false;
+  const body = JSON.stringify({ event, text, room: c.roomId || '', app: 'shinjin-kyoiku' });
+  try {
+    // Content-Type を付けない（text/plain 扱い）ことで事前確認リクエストを避ける
+    const res = await fetch(c.gasUrl, { method: 'POST', body });
+    return res.ok;
+  } catch (e) {
+    try { await fetch(c.gasUrl, { method: 'POST', mode: 'no-cors', body }); return true; } catch (e2) { return false; }
+  }
+}
+
 async function fetchPracticeWords() {
   const snap = await db.doc('settings/practice').get();
   const data = snap.exists ? snap.data() : {};
@@ -265,7 +289,7 @@ function renderTypeSeg(el, list, active) {
 }
 
 /* アプリのバージョン（version.json と index.html / admin.html の ?v= と同じ番号にする） */
-const APP_VERSION = '36';
+const APP_VERSION = '37';
 
 /* 新しいバージョンが公開されていれば読み込み直す。true を返したら reload 済み */
 async function checkForNewVersion(showToast) {
