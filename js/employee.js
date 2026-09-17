@@ -56,7 +56,11 @@ document.addEventListener('DOMContentLoaded', () => {
     if (e.target.closest('[data-cal-next]')) { calNav(myCal, 1); renderHistory(); return; }
     if (e.target.closest('[data-cal-today]')) { calNav(myCal, 0); renderHistory(); return; }
     const write = e.target.closest('[data-write-day]');
-    if (write) { $('#report-date').value = write.dataset.writeDay; $('#report-did').focus(); window.scrollTo(0, 0); }
+    if (write) { $('#report-date').value = write.dataset.writeDay; $('#report-did').focus(); window.scrollTo(0, 0); return; }
+    const edit = e.target.closest('[data-edit-day]');
+    if (edit) { loadReportIntoForm(edit.dataset.editDay); return; }
+    const del = e.target.closest('[data-del-report]');
+    if (del) { deleteMyReport(del.dataset.delReport, del); }
   });
   const didEl = $('#report-did');
   didEl.addEventListener('focus', () => { if (!didEl.value) didEl.value = '・'; });
@@ -423,9 +427,13 @@ async function submitReport(e) {
         confirmations: {}, createdAt: FV.serverTimestamp(),
       });
     }
-    toast('日報を提出しました', 'ok');
-    const head = (did || notice || next || '').split('\n').slice(0, 3).join('\n');
-    notifyChatwork('report', `[info][title]日報が提出されました[/title]${me.name} さん（${fmtYmd(date)}）\n${head}\n\n${location.href.replace(/[^/]*$/, '')}admin.html[/info]`);
+    toast(existing ? '日報を更新しました' : '日報を提出しました', 'ok');
+    btn.dataset.label = '提出する';   // setBusy が戻すラベルも「提出する」にする
+    $('#report-submit').textContent = '提出する';
+    if (!existing) {
+      const head = (did || notice || next || '').split('\n').slice(0, 3).join('\n');
+      notifyChatwork('report', `[info][title]日報が提出されました[/title]${me.name} さん（${fmtYmd(date)}）\n${head}\n\n${location.href.replace(/[^/]*$/, '')}admin.html[/info]`);
+    }
     ['report-did', 'report-notice', 'report-next'].forEach(id => { $('#' + id).value = ''; });
     $('#report-date').value = todayStr();
     setReports(await db.collection('reports').where('uid', '==', me.uid).get());
@@ -433,6 +441,37 @@ async function submitReport(e) {
   } catch (err) {
     toast(authErrorMessage(err), 'err');
   } finally {
+    setBusy(btn, false);
+  }
+}
+
+/* 提出済みの日報を上のフォームに読み込んで直せるようにする */
+function loadReportIntoForm(dt) {
+  const r = myReports.find(x => x.date === dt);
+  if (!r) return;
+  $('#report-date').value = dt;
+  $('#report-did').value = r.did || '';
+  $('#report-notice').value = r.notice || '';
+  $('#report-next').value = r.next || '';
+  if (!r.did && !r.notice && !r.next && r.text) $('#report-did').value = r.text;   // 旧形式の日報
+  $('#report-submit').textContent = `${fmtYmd(dt)} の日報を更新する`;
+  window.scrollTo(0, 0);
+  $('#report-did').focus();
+  toast('内容を直して「更新する」を押してください');
+}
+async function deleteMyReport(id, btn) {
+  const r = myReports.find(x => x.id === id);
+  if (!r) return;
+  if (Object.keys(r.confirmations || {}).length && !confirm('この日報はすでに責任者が確認しています。取り消しますか？')) return;
+  if (!Object.keys(r.confirmations || {}).length && !confirm(`${fmtYmd(r.date)} の日報を取り消しますか？`)) return;
+  setBusy(btn, true, '…');
+  try {
+    await db.doc('reports/' + id).delete();
+    myReports = myReports.filter(x => x.id !== id);
+    renderHistory(); renderHome();
+    toast('日報を取り消しました');
+  } catch (err) {
+    toast(authErrorMessage(err), 'err');
     setBusy(btn, false);
   }
 }
@@ -462,7 +501,8 @@ function renderHistory() {
     <div class="day-panel">
       <h4>${fmtYmd(dt)} の日報</h4>
       ${rep
-        ? reportBodyHtml(rep) + `<div class="confirms">${conf.length ? conf.map(c => `<span class="chip-ok">✅ ${esc(c.name)}</span>`).join('') : '<span class="muted">責任者の確認待ち</span>'}</div>`
+        ? reportBodyHtml(rep) + `<div class="confirms">${conf.length ? conf.map(c => `<span class="chip-ok">✅ ${esc(c.name)}</span>`).join('') : '<span class="muted">責任者の確認待ち</span>'}</div>
+           <div class="btn-row"><button class="btn btn-ghost btn-sm" data-edit-day="${dt}">この日報を修正する</button><button class="btn btn-ghost btn-sm" data-del-report="${rep.id}">取り消す</button></div>`
         : `<p class="muted small">この日の日報はありません</p>${dt <= todayStr() ? `<button class="btn btn-ghost btn-sm" data-write-day="${dt}">この日の日報を書く</button>` : ''}`}
       <h4>${fmtYmd(dt)} の履修・承認・メモ</h4>
       ${acts.length ? `<ul class="day-list">${acts.map(a => `<li>${a.html}</li>`).join('')}</ul>` : '<p class="muted small">この日の記録はありません</p>'}

@@ -1027,6 +1027,8 @@ async function onEmpDetailClick(ev) {
   if (t.closest('[data-cal-prev]')) { calNav(empCal, -1); renderDailyCard(); return; }
   if (t.closest('[data-cal-next]')) { calNav(empCal, 1); renderDailyCard(); return; }
   if (t.closest('[data-cal-today]')) { calNav(empCal, 0); renderDailyCard(); return; }
+  const repDel = t.closest('[data-del-report]');
+  if (repDel) { await deleteReport(repDel.dataset.delReport, repDel); return; }
   const cDel = t.closest('[data-comment-del]');
   if (cDel) { await deleteDailyComment(Number(cDel.dataset.commentDel)); return; }
   const dDel = t.closest('[data-daily-del]');
@@ -1100,12 +1102,25 @@ function reportCard(r) {
   const mine = confirmedByMe(r);
   const checks = r.checks || [];
   const doneN = checks.filter(c => c.done).length;
-  return `<div class="card" data-report="${r.id}">
-    <div class="report-head"><b>${esc(r.name || '')}</b><span class="date">${fmtYmd(r.date)}</span>${checks.length ? `<span class="right">チェック ${doneN}/${checks.length}</span>` : ''}</div>
+  const buttons = `<div class="btn-row">
+      <button class="btn ${mine ? 'btn-ghost' : 'btn-primary'} btn-sm" data-confirm="${r.id}">${mine ? '確認を取り消す' : '✅ 確認した'}</button>
+      <button class="btn btn-danger btn-sm" data-del-report="${r.id}">削除</button>
+    </div>`;
+  const body = `
     ${checks.length ? `<ul class="check-list">${checks.map(c => `<li class="${c.done ? 'on' : ''}">${c.done ? '☑' : '☐'} ${esc(c.label)}</li>`).join('')}</ul>` : ''}
     ${reportBodyHtml(r)}
     <div class="confirms">${conf.length ? conf.map(c => `<span class="chip-ok">✅ ${esc(c.name)}</span>`).join('') : '<span class="muted">まだ誰も確認していません</span>'}</div>
-    <button class="btn ${mine ? 'btn-ghost' : 'btn-primary'} btn-sm" data-confirm="${r.id}">${mine ? '確認を取り消す' : '✅ 確認した'}</button>
+    ${buttons}`;
+  // 自分が確認済みのものは1行に畳んでおく（押すと開く）
+  if (mine) {
+    return `<details class="card report-card folded" data-report="${r.id}">
+      <summary class="report-summary"><b>${esc(r.name || '')}</b><span class="date">${fmtYmd(r.date)}</span><span class="chip-ok">✅ 確認済み${conf.length > 1 ? ` ${conf.length}人` : ''}</span></summary>
+      ${body}
+    </details>`;
+  }
+  return `<div class="card report-card" data-report="${r.id}">
+    <div class="report-head"><b>${esc(r.name || '')}</b><span class="date">${fmtYmd(r.date)}</span>${checks.length ? `<span class="right">チェック ${doneN}/${checks.length}</span>` : ''}</div>
+    ${body}
   </div>`;
 }
 
@@ -1122,8 +1137,29 @@ function renderReports() {
 }
 
 async function onReportClick(e) {
+  const del = e.target.closest('[data-del-report]');
+  if (del) { await deleteReport(del.dataset.delReport, del); return; }
   const btn = e.target.closest('[data-confirm]');
   if (btn) await toggleConfirm(btn.dataset.confirm, btn);
+}
+
+/* 日報を削除（テストで書いたものや誤提出の整理用） */
+async function deleteReport(id, btn) {
+  const r = reports.find(x => x.id === id) || empReports.find(x => x.id === id);
+  if (!r) return;
+  if (!confirm(`${esc(r.name || '')} さんの ${fmtYmd(r.date)} の日報を削除しますか？（元に戻せません）`)) return;
+  setBusy(btn, true, '…');
+  try {
+    await db.doc('reports/' + id).delete();
+    reports = reports.filter(x => x.id !== id);
+    empReports = empReports.filter(x => x.id !== id);
+    renderReports(); renderPending();
+    if (currentEmp) renderEmpDetail();
+    toast('日報を削除しました');
+  } catch (err) {
+    toast(authErrorMessage(err), 'err');
+    setBusy(btn, false);
+  }
 }
 
 async function toggleConfirm(id, btn) {

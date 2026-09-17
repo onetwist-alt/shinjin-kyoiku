@@ -1,0 +1,73 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function signedIn() { return request.auth != null; }
+    function isAdmin() {
+      return signedIn()
+        && exists(/databases/$(database)/documents/admins/$(request.auth.token.email));
+    }
+    function isSelf(uid) { return signedIn() && request.auth.uid == uid; }
+    function isActiveEmployee() {
+      return signedIn()
+        && exists(/databases/$(database)/documents/employees/$(request.auth.uid))
+        && get(/databases/$(database)/documents/employees/$(request.auth.uid)).data.active == true;
+    }
+
+    // 責任者一覧（ドキュメントID = メールアドレス）
+    match /admins/{email} {
+      allow get: if signedIn() && (email == request.auth.token.email || isAdmin());
+      allow list: if isAdmin();
+      allow write: if isAdmin();
+    }
+
+    // 社員
+    match /employees/{uid} {
+      allow read: if isSelf(uid) || isAdmin();
+      allow write: if isAdmin();
+    }
+
+    // 教育項目
+    match /items/{itemId} {
+      allow read: if signedIn();
+      allow write: if isAdmin();
+    }
+
+    // 社員の履修状況（本人が書ける）
+    match /progress/{uid} {
+      allow read: if isSelf(uid) || isAdmin();
+      allow write: if (isSelf(uid) && isActiveEmployee()) || isAdmin();
+    }
+
+    // 責任者の承認（責任者だけが書ける）
+    match /approvals/{uid} {
+      allow read: if isSelf(uid) || isAdmin();
+      allow write: if isAdmin();
+    }
+
+    // 日報
+    match /reports/{reportId} {
+      allow read: if isAdmin() || (signedIn() && resource.data.uid == request.auth.uid);
+      allow create: if isActiveEmployee()
+        && request.resource.data.uid == request.auth.uid
+        && request.resource.data.confirmations.size() == 0;
+      allow update: if isAdmin()
+        || (isActiveEmployee()
+            && resource.data.uid == request.auth.uid
+            && request.resource.data.uid == request.auth.uid
+            && request.resource.data.confirmations == resource.data.confirmations);
+      allow delete: if isAdmin();
+    }
+
+    // 責任者メモ（社員は読めない）
+    match /notes/{uid} {
+      allow read, write: if isAdmin();
+    }
+
+    // 設定（日報のチェック項目など）
+    match /settings/{docId} {
+      allow read: if signedIn();
+      allow write: if isAdmin();
+    }
+  }
+}

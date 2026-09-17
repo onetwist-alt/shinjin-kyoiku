@@ -84,7 +84,7 @@ API トークンを公開ファイルに置けないため、GAS（`gas/chatwork
 ## ファイルを更新したのに画面が変わらないとき
 
 バージョン番号は3か所で管理しています（更新用 ZIP では毎回そろえて上げてあります）。
-- `index.html` / `admin.html` の `?v=37`
+- `index.html` / `admin.html` の `?v=39`
 - `js/common.js` の `APP_VERSION`
 - `version.json`
 
