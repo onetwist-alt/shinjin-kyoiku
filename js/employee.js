@@ -59,8 +59,7 @@ document.addEventListener('DOMContentLoaded', () => {
     if (write) { $('#report-date').value = write.dataset.writeDay; $('#report-did').focus(); window.scrollTo(0, 0); return; }
     const edit = e.target.closest('[data-edit-day]');
     if (edit) { loadReportIntoForm(edit.dataset.editDay); return; }
-    const del = e.target.closest('[data-del-report]');
-    if (del) { deleteMyReport(del.dataset.delReport, del); }
+
   });
   const didEl = $('#report-did');
   didEl.addEventListener('focus', () => { if (!didEl.value) didEl.value = '・'; });
@@ -459,23 +458,6 @@ function loadReportIntoForm(dt) {
   $('#report-did').focus();
   toast('内容を直して「更新する」を押してください');
 }
-async function deleteMyReport(id, btn) {
-  const r = myReports.find(x => x.id === id);
-  if (!r) return;
-  if (Object.keys(r.confirmations || {}).length && !confirm('この日報はすでに責任者が確認しています。取り消しますか？')) return;
-  if (!Object.keys(r.confirmations || {}).length && !confirm(`${fmtYmd(r.date)} の日報を取り消しますか？`)) return;
-  setBusy(btn, true, '…');
-  try {
-    await db.doc('reports/' + id).delete();
-    myReports = myReports.filter(x => x.id !== id);
-    renderHistory(); renderHome();
-    toast('日報を取り消しました');
-  } catch (err) {
-    toast(authErrorMessage(err), 'err');
-    setBusy(btn, false);
-  }
-}
-
 function myDayMarks() {
   const marks = {};
   const add = (key, f) => { if (!key) return; marks[key] = marks[key] || { a: false, b: false, n: 0 }; f(marks[key]); };
@@ -502,7 +484,7 @@ function renderHistory() {
       <h4>${fmtYmd(dt)} の日報</h4>
       ${rep
         ? reportBodyHtml(rep) + `<div class="confirms">${conf.length ? conf.map(c => `<span class="chip-ok">✅ ${esc(c.name)}</span>`).join('') : '<span class="muted">責任者の確認待ち</span>'}</div>
-           <div class="btn-row"><button class="btn btn-ghost btn-sm" data-edit-day="${dt}">この日報を修正する</button><button class="btn btn-ghost btn-sm" data-del-report="${rep.id}">取り消す</button></div>`
+           <div class="btn-row"><button class="btn btn-ghost btn-sm" data-edit-day="${dt}">この日報を修正する</button></div>`
         : `<p class="muted small">この日の日報はありません</p>${dt <= todayStr() ? `<button class="btn btn-ghost btn-sm" data-write-day="${dt}">この日の日報を書く</button>` : ''}`}
       <h4>${fmtYmd(dt)} の履修・承認・メモ</h4>
       ${acts.length ? `<ul class="day-list">${acts.map(a => `<li>${a.html}</li>`).join('')}</ul>` : '<p class="muted small">この日の記録はありません</p>'}
